@@ -19,7 +19,7 @@ body.dark{--bg:#101318;--ink:#f5f1e9;--card:#1d222a;--border:#5b5d61;--accent:#e
 <script>
 'use strict';
 const base='https://cdn.jsdelivr.net/gh/ouryhamdalaye/madinah-mushaf-json@main/pages/';
-const $=id=>document.getElementById(id);let page=Math.min(604,Math.max(1,Number(localStorage.getItem('noor-page'))||1)),size=Number(localStorage.getItem('noor-size'))||28,meta=[],request=0;
+const $=id=>document.getElementById(id);let page=Math.min(604,Math.max(1,Number(localStorage.getItem('noor-page'))||1)),size=Number(localStorage.getItem('noor-size'))||28,meta=[],request=0,selectedSurah=null;
 function setFont(){size=Math.max(18,Math.min(48,size));document.documentElement.style.setProperty('--font',`clamp(${Math.max(17,size-6)}px,5vw,${size}px)`);localStorage.setItem('noor-size',size)}
 setFont();if(localStorage.getItem('noor-dark')==='1')document.body.classList.add('dark');
 $('theme').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('noor-dark',document.body.classList.contains('dark')?'1':'0')};$('plus').onclick=()=>{size+=3;setFont()};$('minus').onclick=()=>{size-=3;setFont()};
@@ -29,21 +29,21 @@ function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className
 async function loadPage(n){n=Math.max(1,Math.min(604,Math.trunc(Number(n)||1)));page=n;const id=++request;$('pageInput').value=n;$('status').textContent='جار تحميل الصفحة…';$('lines').replaceChildren();$('heading').textContent='صفحة '+n;
 try{const d=await getJSON('page-'+digits(n)+'.json');if(id!==request)return;
 const lookup=new Map();for(const v of d.verses||[])for(const w of v.words||[])lookup.set(`${v.surah_number}:${v.ayah_number}:${w.word_index}`,w.text);
-const fragment=document.createDocumentFragment();let previous=null;
-for(const line of d.lines||[]){if(line.type==='surah-header'){fragment.append(el('div','surah',line.text||'سورة'));continue}if(line.type!=='ayah-line')continue;
-const row=el('div','line');for(const token of line.tokens||[]){const key=`${token.s}:${token.a}:${token.w}`,word=lookup.get(key);if(word===undefined)continue;
+const fragment=document.createDocumentFragment();let previous=null;const atStart=selectedSurah!==null&&n===Number(selectedSurah.start_page);if(atStart)fragment.append(el('div','surah','سورة '+selectedSurah.name));
+for(const line of d.lines||[]){if(line.type==='surah-header'){if(!atStart)fragment.append(el('div','surah',line.text||'سورة'));continue}if(line.type!=='ayah-line')continue;
+const row=el('div','line');for(const token of line.tokens||[]){if(atStart && (Number(token.s)!==Number(selectedSurah.id)||Number(token.a)<1))continue;const key=`${token.s}:${token.a}:${token.w}`,word=lookup.get(key);if(word===undefined)continue;
 if(row.childNodes.length)row.append(document.createTextNode(' '));row.append(document.createTextNode(word));
 // Add an ayah marker only when this token is the final word of that ayah on this page.
 const v=(d.verses||[]).find(v=>v.surah_number===token.s&&v.ayah_number===token.a);
 if(v&&v.words?.length&&token.w===v.words[v.words.length-1].word_index){const marker=el('span','verse-number',' ۞'+toArabic(token.a)+' ');row.append(marker)}previous=token}
-fragment.append(row)}$('lines').replaceChildren(fragment);$('status').textContent='';localStorage.setItem('noor-page',n);const found=meta.filter(s=>Number(s.start_page)<=n).at(-1);if(found)$('heading').textContent='سورة '+found.name+' — الصفحة '+n;
+if(row.childNodes.length)fragment.append(row)}$('lines').replaceChildren(fragment);$('status').textContent='';localStorage.setItem('noor-page',n);const found=meta.filter(s=>Number(s.start_page)<=n).at(-1);if(found)$('heading').textContent='سورة '+(atStart?selectedSurah.name:found.name)+' — الصفحة '+n;
 }catch(e){if(id!==request)return;$('status').textContent='تعذر تحميل الصفحة. تحقق من الإنترنت ثم اضغط إعادة المحاولة.';const retry=el('button','', 'إعادة المحاولة');retry.onclick=()=>loadPage(page);$('lines').replaceChildren(retry);console.error(e)}}
 function toArabic(n){return String(n).replace(/\d/g,d=>'٠١٢٣٤٥٦٧٨٩'[Number(d)])}
-$('next').onclick=()=>loadPage(page+1);$('prev').onclick=()=>loadPage(page-1);$('pageInput').onchange=e=>loadPage(e.target.value);
+$('next').onclick=()=>{selectedSurah=null;loadPage(page+1)};$('prev').onclick=()=>{selectedSurah=null;loadPage(page-1)};$('pageInput').onchange=e=>{selectedSurah=null;loadPage(e.target.value)};
 $('listBtn').onclick=()=>{$('surahs').classList.add('open');$('filter').focus()};$('close').onclick=()=>$('surahs').classList.remove('open');
-function drawList(q=''){const grid=$('grid');grid.replaceChildren();const normalized=s=>String(s||'').normalize('NFKD').replace(/[\u064b-\u065f]/g,'').replace(/[أإآ]/g,'ا');for(const s of meta){if(!normalized(s.name).includes(normalized(q)))continue;const b=el('button','',s.id+' '+s.name);b.onclick=()=>{$('surahs').classList.remove('open');loadPage(s.start_page)};grid.append(b)}}$('filter').oninput=e=>drawList(e.target.value);
-let touchX=null,touchY=null;const paper=$('paper');paper.addEventListener('touchstart',e=>{if(e.touches.length!==1){touchX=null;return}touchX=e.touches[0].clientX;touchY=e.touches[0].clientY},{passive:true});paper.addEventListener('touchend',e=>{if(touchX===null||e.changedTouches.length!==1)return;const dx=e.changedTouches[0].clientX-touchX,dy=e.changedTouches[0].clientY-touchY;touchX=null;if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.3){loadPage(page+(dx>0?-1:1))}},{passive:true});
-window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight')loadPage(page-1);if(e.key==='ArrowLeft')loadPage(page+1)});
+function drawList(q=''){const grid=$('grid');grid.replaceChildren();const normalized=s=>String(s||'').normalize('NFKD').replace(/[\u064b-\u065f]/g,'').replace(/[أإآ]/g,'ا');for(const s of meta){if(!normalized(s.name).includes(normalized(q)))continue;const b=el('button','',s.id+' '+s.name);b.onclick=()=>{$('surahs').classList.remove('open');selectedSurah=s;loadPage(s.start_page)};grid.append(b)}}$('filter').oninput=e=>drawList(e.target.value);
+let touchX=null,touchY=null;const paper=$('paper');paper.addEventListener('touchstart',e=>{if(e.touches.length!==1){touchX=null;return}touchX=e.touches[0].clientX;touchY=e.touches[0].clientY},{passive:true});paper.addEventListener('touchend',e=>{if(touchX===null||e.changedTouches.length!==1)return;const dx=e.changedTouches[0].clientX-touchX,dy=e.changedTouches[0].clientY-touchY;touchX=null;if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.3){(selectedSurah=null,loadPage(page+(dx>0?-1:1)))}},{passive:true});
+window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight'){selectedSurah=null;loadPage(page-1)}if(e.key==='ArrowLeft'){selectedSurah=null;loadPage(page+1)}});
 (async()=>{try{meta=await getJSON('meta.json');drawList()}catch(e){$('grid').textContent='تعذر تحميل فهرس السور، حاول تحديث الصفحة.';console.error(e)}await loadPage(page)})();
 </script>
 </body></html>
